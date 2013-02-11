@@ -527,7 +527,7 @@ get_range({?MODULE, ReqState}=Req) ->
         {undefined, _} ->
             {undefined, ReqState#wm_reqstate{range=undefined}};
         {RawRange, _} ->
-            Range = parse_range_request(RawRange),
+            Range = webmachine_util:parse_range(RawRange),
             {Range, ReqState#wm_reqstate{range=Range}}
     end.
 
@@ -576,40 +576,7 @@ range_parts(Body0, Ranges) when is_binary(Body0); is_list(Body0) ->
     {lists:foldr(F, [], Ranges), Size}.
 
 range_skip_length(Spec, Size) ->
-    case Spec of
-        {none, R} when R =< Size, R >= 0 ->
-            {Size - R, R};
-        {none, _OutOfRange} ->
-            {0, Size};
-        {R, none} when R >= 0, R < Size ->
-            {R, Size - R};
-        {_OutOfRange, none} ->
-            invalid_range;
-        {Start, End} when 0 =< Start, Start =< End, End < Size ->
-            {Start, End - Start + 1};
-        {_OutOfRange, _End} ->
-            invalid_range
-    end.
-
-parse_range_request(RawRange) when is_list(RawRange) ->
-    try
-        "bytes=" ++ RangeString = RawRange,
-        Ranges = string:tokens(RangeString, ","),
-        lists:map(fun ("-" ++ V)  ->
-                          {none, list_to_integer(V)};
-                      (R) ->
-                          case string:tokens(R, "-") of
-                              [S1, S2] ->
-                                  {list_to_integer(S1), list_to_integer(S2)};
-                              [S] ->
-                                  {list_to_integer(S), none}
-                          end
-                  end,
-                  Ranges)
-    catch
-        _:_ ->
-            fail
-    end.
+    webmachine_util:range_skip_length(Spec, Size).
 
 parts_to_body([{Start, End, Body0}], Size, Req) ->
     %% return body for a range reponse with a single body

@@ -27,6 +27,7 @@
 -export([media_type_to_detail/1,
          quoted_string/1,
          split_quoted_strings/1]).
+-export([parse_range/1, parse_range/2, range_skip_length/2]).
 
 -ifdef(TEST).
 -ifdef(EQC).
@@ -369,6 +370,61 @@ now_diff_milliseconds({M,S,U}, {M,S1,U1}) ->
     ((S-S1) * 1000) + ((U-U1) div 1000);
 now_diff_milliseconds({M,S,U}, {M1,S1,U1}) ->
     ((M-M1)*1000000+(S-S1))*1000 + ((U-U1) div 1000).
+
+-spec parse_range(RawRange::string()) ->
+                         [{Skip::(non_neg_integer() | none),
+                           Length::(non_neg_integer() | none)}]
+                       | fail.
+parse_range(RawRange) when is_list(RawRange) ->
+    try
+        "bytes=" ++ RangeString = RawRange,
+        Ranges = string:tokens(RangeString, ","),
+        lists:map(fun ("-" ++ V)  ->
+                          {none, list_to_integer(V)};
+                      (R) ->
+                          case string:tokens(R, "-") of
+                              [S1, S2] ->
+                                  {list_to_integer(S1), list_to_integer(S2)};
+                              [S] ->
+                                  {list_to_integer(S), none}
+                          end
+                  end,
+                  Ranges)
+    catch
+        _:_ ->
+            fail
+    end.
+
+-spec parse_range(RawRange::string(), ResourceLength::non_neg_integer()) ->
+                         [{Start::non_neg_integer(), End::non_neg_integer()}].
+parse_range(RawRange, ResourceLength) when is_list(RawRange) ->
+    parse_range(parse_range(RawRange), ResourceLength, []).
+
+parse_range([], _ResourceLength, Acc) ->
+    lists:reverse(Acc);
+parse_range([Spec | Rest], ResourceLength, Acc) ->
+    case range_skip_length(Spec, ResourceLength) of
+        invalid_range ->
+            parse_range(Rest, ResourceLength, Acc);
+        {Skip, Length} ->
+            parse_range(Rest, ResourceLength, [{Skip, Skip + Length - 1} | Acc])
+    end.
+
+range_skip_length(Spec, Size) ->
+    case Spec of
+        {none, R} when R =< Size, R >= 0 ->
+            {Size - R, R};
+        {none, _OutOfRange} ->
+            {0, Size};
+        {R, none} when R >= 0, R < Size ->
+            {R, Size - R};
+        {_OutOfRange, none} ->
+            invalid_range;
+        {Start, End} when 0 =< Start, Start =< End, End < Size ->
+            {Start, End - Start + 1};
+        {_OutOfRange, _End} ->
+            invalid_range
+    end.
 
 %%
 %% TEST
