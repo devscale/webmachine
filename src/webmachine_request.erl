@@ -531,7 +531,7 @@ get_range({?MODULE, #wm_reqstate{reqdata = RD}=ReqState}=Req) ->
                 {undefined, _} ->
                     {undefined, ReqState#wm_reqstate{range=undefined}};
                 {RawRange, _} ->
-                    Range = webmachine_util:parse_range(RawRange),
+                    Range = mochiweb_http:parse_range_request(RawRange),
                     {Range, ReqState#wm_reqstate{range=Range}}
             end
     end.
@@ -539,7 +539,7 @@ get_range({?MODULE, #wm_reqstate{reqdata = RD}=ReqState}=Req) ->
 range_parts(_RD=#wm_reqdata{resp_body={file, IoDevice}}, Ranges) ->
     Size = mochiweb_io:iodevice_size(IoDevice),
     F = fun (Spec, Acc) ->
-                case range_skip_length(Spec, Size) of
+                case mochiweb_http:range_skip_length(Spec, Size) of
                     invalid_range ->
                         Acc;
                     V ->
@@ -560,7 +560,7 @@ range_parts(RD=#wm_reqdata{resp_body={stream, {Hunk,Next}}}, Ranges) ->
     range_parts(read_whole_stream({Hunk,Next}, [], MRB, 0), Ranges);
 
 range_parts(_RD=#wm_reqdata{resp_body={stream, Size, StreamFun}}, Ranges) ->
-    SkipLengths = [ range_skip_length(R, Size) || R <- Ranges],
+    SkipLengths = [ mochiweb_http:range_skip_length(R, Size) || R <- Ranges],
     {[ {Skip, Skip+Length-1, StreamFun} || {Skip, Length} <- SkipLengths ],
      Size};
 
@@ -568,7 +568,7 @@ range_parts(Body0, Ranges) when is_binary(Body0); is_list(Body0) ->
     Body = iolist_to_binary(Body0),
     Size = size(Body),
     F = fun(Spec, Acc) ->
-                case range_skip_length(Spec, Size) of
+                case mochiweb_http:range_skip_length(Spec, Size) of
                     invalid_range ->
                         Acc;
                     {Skip, Length} ->
@@ -579,9 +579,6 @@ range_parts(Body0, Ranges) when is_binary(Body0); is_list(Body0) ->
                 end
         end,
     {lists:foldr(F, [], Ranges), Size}.
-
-range_skip_length(Spec, Size) ->
-    webmachine_util:range_skip_length(Spec, Size).
 
 parts_to_body([{Start, End, Body0}], Size, Req) ->
     %% return body for a range reponse with a single body
